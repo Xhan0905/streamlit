@@ -75,7 +75,7 @@ def download_model(model_name: str) -> Optional[str]:
         return None
         
     model_filename = MODEL_REPO[model_name]
-    model_url = f"https://github.com/Xhan0905/streamlit/releases/download/models/{model_filename}"
+    model_url = f"https://github.com/Xhan0905/streamlit/blob/main/{model_filename}"
     local_path = os.path.join("models", model_filename)
     
     os.makedirs("models", exist_ok=True)
