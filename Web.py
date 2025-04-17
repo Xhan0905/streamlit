@@ -15,7 +15,7 @@ import random
 import string
 import oss2
 from oss2.exceptions import OssError
-
+import chardet
 
 def handler(event, context):
     os.system("streamlit run Web.py --server.port 8080")
@@ -127,10 +127,16 @@ class VideoProcessor(VideoProcessorBase):
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 # 读取用户信息
+def get_file_encoding(file_path):
+    with open(file_path, 'rb') as f:
+        result = chardet.detect(f.read())
+    return result['encoding']
+    
 def load_users():
     users = {}
     if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, "r") as f:
+        encoding = get_file_encoding(USERS_FILE)
+        with open(USERS_FILE, "r", encoding=encoding) as f:
             for line in f:
                 parts = line.strip().split(",")
                 if len(parts) == 6:
