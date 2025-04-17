@@ -29,6 +29,16 @@ ACCESS_KEY_SECRET = 'jef9v75IXKHxNLq3DfsTpi2Ee9Hq6U'
 BUCKET_NAME = 'tjdx-tds-beta1'
 ENDPOINT = 'http://oss-cn-shanghai.aliyuncs.com'
 
+# 上传文件到 OSS
+def upload_to_oss(oss_client, file_path, object_name):
+    try:
+        oss_client.put_object_from_file(object_name, file_path)
+        st.success(f"文件已成功上传到OSS: {object_name}")
+    except OssError as e:
+        st.error(f"上传到OSS时出错: {e}")
+    except Exception as e:
+        st.error(f"上传到OSS时出错: {e}")
+
 # 常量定义
 WINDOW_TITLE = "目标检测系统（TDS_V.0.1）"
 WELCOME_SENTENCE = "欢迎使用基于YOLO的目标检测与分割系统！\n同济大学徐晨团队"
