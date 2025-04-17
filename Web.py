@@ -328,9 +328,8 @@ def home_page():
     st.title(WINDOW_TITLE)
     st.subheader(WELCOME_SENTENCE)
 
-    # 封面图片
-    if os.path.exists("https://github.com/Xhan0905/streamlit/raw/refs/heads/main/cover.jpg"):
-        st.image("https://github.com/Xhan0905/streamlit/raw/refs/heads/main/cover.jpg", use_column_width=True)
+    cover_image_url = "https://github.com/Xhan0905/streamlit/raw/refs/heads/main/cover.jpg"
+    st.image(cover_image_url, use_column_width=True)
 
     st.markdown(f"**当前模型:** {st.session_state.current_model}")
     
