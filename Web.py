@@ -1,22 +1,20 @@
-import sys
 import os
-import cv2
-import time
-import numpy as np
-import streamlit as st
-from ultralytics import YOLO
-from PIL import Image
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase, RTCConfiguration
-import av
-import tempfile
-import hashlib
 import random
 import string
+import streamlit as st
+import requests
+from ultralytics import YOLO
 import oss2
 from oss2.exceptions import OssError
 import json
-import requests
-from typing import Dict, Optional
+import hashlib
+import tempfile
+import cv2
+import numpy as np
+from PIL import Image
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase, RTCConfiguration
+import av
+import time
 
 # WebRTC配置
 RTC_CONFIGURATION = RTCConfiguration(
@@ -28,16 +26,6 @@ ACCESS_KEY_ID = 'LTAI5tPdvSTFn4gpa4bpz4Hj'
 ACCESS_KEY_SECRET = 'jef9v75IXKHxNLq3DfsTpi2Ee9Hq6U'
 BUCKET_NAME = 'tjdx-tds-beta1'
 ENDPOINT = 'http://oss-cn-shanghai.aliyuncs.com'
-
-# 上传文件到 OSS
-def upload_to_oss(oss_client, file_path, object_name):
-    try:
-        oss_client.put_object_from_file(object_name, file_path)
-        st.success(f"文件已成功上传到OSS: {object_name}")
-    except OssError as e:
-        st.error(f"上传到OSS时出错: {e}")
-    except Exception as e:
-        st.error(f"上传到OSS时出错: {e}")
 
 # 常量定义
 WINDOW_TITLE = "目标检测系统（TDS_V.0.1）"
@@ -242,6 +230,7 @@ def plot_results(img, results):
                 mask = mask.astype(np.int32).reshape((-1, 1, 2))
                 cv2.fillPoly(img, [mask], (0, 255, 0))
     return img
+
 # 从OSS加载用户信息
 def load_users(oss_client):
     """从OSS加载用户数据"""
@@ -328,6 +317,7 @@ def home_page():
         st.image("cover.jpg", use_column_width=True)
 
     st.markdown(f"**当前模型:** {st.session_state.current_model}")
+
     # 模型切换
     with st.expander("模型管理"):
         col1, col2 = st.columns(2)
@@ -348,17 +338,7 @@ def home_page():
                 st.session_state.model = None
                 st.session_state.current_model = "未加载模型"
                 st.success("模型已卸载")
-            
-            # 重新加载默认模型按钮
-            if st.button("加载默认模型"):
-                model_path = download_default_model()
-                if model_path:
-                    try:
-                        st.session_state.model = load_model(model_path)
-                        st.session_state.current_model = "默认模型(yolov8n)"
-                        st.success("默认模型加载成功")
-                    except Exception as e:
-                        st.error(f"加载默认模型失败: {str(e)}")
+
 # 图片检测页
 def image_detection(oss_client):
     st.title("图片检测")
