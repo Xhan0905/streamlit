@@ -1,5 +1,5 @@
 streamlit==1.36.0
-streamlit-webrtc==0.48.0
+streamlit-webrtc==0.48.1
 ultralytics==8.3.11
 torch==2.4.1
 torchvision==0.19.1
