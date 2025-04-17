@@ -29,11 +29,10 @@ ACCESS_KEY_SECRET = 'jef9v75IXKHxNLq3DfsTpi2Ee9Hq6U'
 BUCKET_NAME = 'tjdx-tds-beta1'
 ENDPOINT = 'http://oss-cn-shanghai.aliyuncs.com'
 
-# 内置模型配置 (修改为你的GitHub仓库实际路径)
-MODEL_REPO = "https://github.com/Xhan0905/streamlit/"
-BUILTIN_MODELS = {
-    "yolov8n (默认)": "yolov11n.pt",
-    "concraseg": "best-seg.pt", 
+# 内置模型配置
+MODEL_REPO = {
+    "yolov8n (默认)": "yolov8n.pt",
+    "concraseg": "best-seg.pt",
 }
 
 # 初始化全局组件
@@ -57,7 +56,7 @@ def init_session_state():
         'captcha': ''.join(random.choices(string.ascii_uppercase + string.digits, k=6)),
         'username': None,
         'webrtc_ctx': None,
-        'available_models': list(MODEL_REPO.keys()),
+        'available_models': list(MODEL_REPO.keys()),  # 确保这里使用 MODEL_REPO 的键
         'selected_model': next(iter(MODEL_REPO.keys()))  # 默认选择第一个模型
     }
     
@@ -76,7 +75,7 @@ def download_model(model_name: str) -> Optional[str]:
         return None
         
     model_filename = MODEL_REPO[model_name]
-    model_url = f"{MODEL_REPO}{model_filename}"
+    model_url = f"https://github.com/Xhan0905/streamlit/releases/download/models/{model_filename}"
     local_path = os.path.join("models", model_filename)
     
     os.makedirs("models", exist_ok=True)
