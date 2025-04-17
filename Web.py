@@ -95,6 +95,12 @@ def download_model(model_name: str) -> Optional[str]:
             return None
     return local_path
 
+# 加载模型
+@st.cache_resource
+def load_model(model_path: str):
+    """加载 YOLO 模型"""
+    return YOLO(model_path)
+    
 # 加载内置模型
 def load_builtin_model(model_name: str):
     """加载预定义的内置模型"""
