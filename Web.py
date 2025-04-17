@@ -328,6 +328,37 @@ def home_page():
         st.image("cover.jpg", use_column_width=True)
 
     st.markdown(f"**当前模型:** {st.session_state.current_model}")
+    # 模型切换
+    with st.expander("模型管理"):
+        col1, col2 = st.columns(2)
+        with col1:
+            model_file = st.file_uploader("上传YOLO模型(.pt)", type=["pt"])
+            if model_file and st.button("加载模型"):
+                try:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pt") as tmp:
+                        tmp.write(model_file.getbuffer())
+                        st.session_state.model = load_model(tmp.name)
+                        st.session_state.current_model = model_file.name
+                    st.success(f"模型加载成功: {model_file.name}")
+                except Exception as e:
+                    st.error(f"模型加载失败: {str(e)}")
+
+        with col2:
+            if st.session_state.model and st.button("卸载模型"):
+                st.session_state.model = None
+                st.session_state.current_model = "未加载模型"
+                st.success("模型已卸载")
+            
+            # 重新加载默认模型按钮
+            if st.button("加载默认模型"):
+                model_path = download_default_model()
+                if model_path:
+                    try:
+                        st.session_state.model = load_model(model_path)
+                        st.session_state.current_model = "默认模型(yolov8n)"
+                        st.success("默认模型加载成功")
+                    except Exception as e:
+                        st.error(f"加载默认模型失败: {str(e)}")
 # 图片检测页
 def image_detection(oss_client):
     st.title("图片检测")
