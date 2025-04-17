@@ -58,6 +58,11 @@ BUILTIN_MODELS = {
         "url": "https://github.com/ultralytics/assets/releases/download/v8.1.0/yolov8x.pt",
         "description": "最大模型，最高精度但最慢"
     }
+    "ConCra-seg": {
+        "name": "混凝土裂缝分割模型",
+        "url": "https://github.com/Xhan0905/streamlit/best-seg.pt",
+        "description": "最大模型，最高精度但最慢"
+    }
 }
 
 # 初始化 OSS 客户端
