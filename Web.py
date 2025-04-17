@@ -6,7 +6,7 @@ import numpy as np
 import streamlit as st
 from ultralytics import YOLO
 from PIL import Image
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase, RTCConfiguration
 import av
 import tempfile
 import hashlib
@@ -15,6 +15,12 @@ import string
 import oss2
 from oss2.exceptions import OssError
 import json
+import requests
+
+# WebRTC配置
+RTC_CONFIGURATION = RTCConfiguration(
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+)
 
 def handler(event, context):
     os.system("streamlit run Web.py --server.port 8080")
@@ -24,6 +30,35 @@ ACCESS_KEY_ID = 'LTAI5tPdvSTFn4gpa4bpz4Hj'
 ACCESS_KEY_SECRET = 'jef9v75IXKHxNLq3DfsTpi2Ee9Hq6U'
 BUCKET_NAME = 'tjdx-tds-beta1'
 ENDPOINT = 'http://oss-cn-shanghai.aliyuncs.com'
+
+# 内置模型配置
+BUILTIN_MODELS = {
+    "yolov8n": {
+        "name": "YOLOv8 Nano (默认)",
+        "url": "https://github.com/ultralytics/assets/releases/download/v8.1.0/yolov8n.pt",
+        "description": "轻量级模型，适合移动设备和边缘计算"
+    },
+    "yolov8s": {
+        "name": "YOLOv8 Small",
+        "url": "https://github.com/ultralytics/assets/releases/download/v8.1.0/yolov8s.pt",
+        "description": "平衡速度和精度的小型模型"
+    },
+    "yolov8m": {
+        "name": "YOLOv8 Medium",
+        "url": "https://github.com/ultralytics/assets/releases/download/v8.1.0/yolov8m.pt",
+        "description": "中等大小模型，提供更好的精度"
+    },
+    "yolov8l": {
+        "name": "YOLOv8 Large",
+        "url": "https://github.com/ultralytics/assets/releases/download/v8.1.0/yolov8l.pt",
+        "description": "大型模型，高精度但计算资源需求高"
+    },
+    "yolov8x": {
+        "name": "YOLOv8 XLarge",
+        "url": "https://github.com/ultralytics/assets/releases/download/v8.1.0/yolov8x.pt",
+        "description": "最大模型，最高精度但最慢"
+    }
+}
 
 # 初始化 OSS 客户端
 def init_oss_client():
@@ -48,6 +83,29 @@ def upload_to_oss(oss_client, file_path, object_name):
     except Exception as e:
         st.error(f"上传到OSS时出错: {e}")
 
+# 下载模型
+def download_model(model_key):
+    model_path = f"models/{model_key}.pt"
+    os.makedirs("models", exist_ok=True)
+    
+    if not os.path.exists(model_path):
+        try:
+            model_info = BUILTIN_MODELS[model_key]
+            st.info(f"正在下载模型: {model_info['name']}...")
+            
+            response = requests.get(model_info["url"], stream=True)
+            response.raise_for_status()
+            
+            with open(model_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            st.success(f"模型下载完成: {model_info['name']}")
+        except Exception as e:
+            st.error(f"下载模型失败: {e}")
+            return None
+    return model_path if os.path.exists(model_path) else None
+
 # 定义保存路径
 UPLOAD_FOLDER = "uploads"
 DETECTION_FOLDER = "detections"
@@ -58,6 +116,8 @@ def init_folders():
         os.makedirs(UPLOAD_FOLDER)
     if not os.path.exists(DETECTION_FOLDER):
         os.makedirs(DETECTION_FOLDER)
+    if not os.path.exists("models"):
+        os.makedirs("models")
 
 # 常量定义
 WINDOW_TITLE = "目标检测系统（TDS_V.0.1）"
@@ -67,9 +127,27 @@ OSS_USERS_FILE = "users_info.json"  # 用户信息文件存储在OSS中
 # 初始化session state
 def init_session():
     if 'model' not in st.session_state:
-        st.session_state.model = None
+        # 尝试加载默认模型
+        model_path = download_model("yolov8n")
+        if model_path:
+            try:
+                st.session_state.model = load_model(model_path)
+                st.session_state.current_model = BUILTIN_MODELS["yolov8n"]["name"]
+                st.session_state.current_model_key = "yolov8n"
+            except Exception as e:
+                st.error(f"加载默认模型失败: {str(e)}")
+                st.session_state.model = None
+                st.session_state.current_model = "未加载模型"
+                st.session_state.current_model_key = None
+        else:
+            st.session_state.model = None
+            st.session_state.current_model = "未加载模型"
+            st.session_state.current_model_key = None
+    
     if 'current_model' not in st.session_state:
         st.session_state.current_model = "未加载模型"
+    if 'current_model_key' not in st.session_state:
+        st.session_state.current_model_key = None
     if 'is_paused' not in st.session_state:
         st.session_state.is_paused = False
     if 'cap' not in st.session_state:
@@ -84,6 +162,8 @@ def init_session():
         st.session_state.captcha = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
     if 'username' not in st.session_state:
         st.session_state.username = None
+    if 'webrtc_ctx' not in st.session_state:
+        st.session_state.webrtc_ctx = None
 
 # 模型加载装饰器
 @st.cache_resource
@@ -212,27 +292,63 @@ def home_page():
         st.image("cover.jpg", use_column_width=True)
 
     st.markdown(f"**当前模型:** {st.session_state.current_model}")
+    if st.session_state.current_model_key and st.session_state.current_model_key in BUILTIN_MODELS:
+        st.markdown(f"**模型描述:** {BUILTIN_MODELS[st.session_state.current_model_key]['description']}")
 
-    # 模型切换
+    # 模型管理
     with st.expander("模型管理"):
         col1, col2 = st.columns(2)
+        
         with col1:
+            # 内置模型选择
+            st.subheader("内置模型")
+            selected_model = st.selectbox(
+                "选择内置模型",
+                options=list(BUILTIN_MODELS.keys()),
+                format_func=lambda x: BUILTIN_MODELS[x]["name"],
+                index=0 if not st.session_state.current_model_key else list(BUILTIN_MODELS.keys()).index(st.session_state.current_model_key)
+            )
+            
+            if st.button("加载内置模型"):
+                model_path = download_model(selected_model)
+                if model_path:
+                    try:
+                        st.session_state.model = load_model(model_path)
+                        st.session_state.current_model = BUILTIN_MODELS[selected_model]["name"]
+                        st.session_state.current_model_key = selected_model
+                        st.success(f"模型加载成功: {BUILTIN_MODELS[selected_model]['name']}")
+                    except Exception as e:
+                        st.error(f"模型加载失败: {str(e)}")
+            
+            # 自定义模型上传
+            st.subheader("自定义模型")
             model_file = st.file_uploader("上传YOLO模型(.pt)", type=["pt"])
-            if model_file and st.button("加载模型"):
+            if model_file and st.button("加载自定义模型"):
                 try:
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".pt") as tmp:
                         tmp.write(model_file.getbuffer())
                         st.session_state.model = load_model(tmp.name)
                         st.session_state.current_model = model_file.name
+                        st.session_state.current_model_key = None
                     st.success(f"模型加载成功: {model_file.name}")
                 except Exception as e:
                     st.error(f"模型加载失败: {str(e)}")
 
         with col2:
+            # 模型卸载
             if st.session_state.model and st.button("卸载模型"):
                 st.session_state.model = None
                 st.session_state.current_model = "未加载模型"
+                st.session_state.current_model_key = None
                 st.success("模型已卸载")
+            
+            # 模型信息
+            if st.session_state.current_model_key and st.session_state.current_model_key in BUILTIN_MODELS:
+                st.markdown("### 当前模型信息")
+                model_info = BUILTIN_MODELS[st.session_state.current_model_key]
+                st.markdown(f"**名称:** {model_info['name']}")
+                st.markdown(f"**描述:** {model_info['description']}")
+                st.markdown(f"**下载地址:** [点击查看]({model_info['url']})")
 
 # 图片检测页
 def image_detection(oss_client):
@@ -244,7 +360,7 @@ def image_detection(oss_client):
         uploaded_file = st.file_uploader("上传图片", type=["jpg", "jpeg", "png"])
         if uploaded_file:
             # 使用临时文件
-            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)  :reference[]{#1}) as tmp:
                 tmp.write(uploaded_file.getbuffer())
                 upload_path = tmp.name
 
@@ -296,66 +412,69 @@ def image_detection(oss_client):
                 finally:
                     # 删除临时文件
                     if os.path.exists(upload_path):
-                        os.unlink(upload_path)
-                    if 'detection_path' in locals() and os.path.exists(detection_path):
-                        os.unlink(detection_path)
+                        os.unlink(upload_path) if 'detection_path' in locals() and os.path.exists(detection_path): os.unlink(detection_path)
 
-# 视频检测页
-def video_detection(oss_client):
+def video_detection(oss_client): 
     st.title("视频检测")
-
     tab1, tab2, tab3 = st.tabs(["摄像头检测", "视频文件检测", "IP摄像头检测"])
 
     with tab1:
         st.header("摄像头实时检测")
         if st.session_state.model:
-            webrtc_ctx = webrtc_streamer(
+            st.session_state.webrtc_ctx = webrtc_streamer(
                 key="example",
                 mode=WebRtcMode.SENDRECV,
+                rtc_configuration=RTC_CONFIGURATION,
                 video_processor_factory=VideoProcessor,
                 async_processing=True,
+                media_stream_constraints={
+                    "video": True,
+                    "audio": False
+                }
             )
-            if webrtc_ctx.video_processor:
+            if st.session_state.webrtc_ctx and st.session_state.webrtc_ctx.video_processor:
                 if st.button("暂停/继续检测"):
-                    webrtc_ctx.video_processor.pause_toggle()
-
+                    st.session_state.webrtc_ctx.video_processor.pause_toggle()
+        else:
+            st.warning("请先加载模型")
+    
     with tab2:
         st.header("视频文件检测")
         video_file = st.file_uploader("上传视频文件", type=["mp4", "avi", "mov"])
-
+    
         if video_file and st.session_state.model:
             # 使用临时文件
-            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(video_file.name)[1]) as tmp:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(video_file.name)  :reference[]{#1}) as tmp:
                 tmp.write(video_file.read())
                 upload_path = tmp.name
-
+    
             # 上传到 OSS
             upload_to_oss(oss_client, upload_path, f"uploads/{video_file.name}")
-
+    
             # 视频检测
             if st.button("开始视频检测"):
                 cap = cv2.VideoCapture(upload_path)
                 frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                 frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 fps = cap.get(cv2.CAP_PROP_FPS)
-
+    
                 # 使用临时文件保存检测结果
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
                     detection_path = tmp.name
                     out = cv2.VideoWriter(detection_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (frame_width, frame_height))
-
+    
                     frame_placeholder = st.empty()
                     stop_button = st.button("停止检测")
-
+    
                     while cap.isOpened() and not stop_button:
                         ret, frame = cap.read()
                         if not ret:
                             st.warning("视频结束")
                             break
-
+    
                         # 执行检测
                         results = st.session_state.model(frame)
-
+    
                         # 绘制结果
                         for result in results:
                             if hasattr(result, 'boxes'):
@@ -364,27 +483,27 @@ def video_detection(oss_client):
                                     cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
                                     label = f"{result.names[int(cls)]}: {conf:.2f}"
                                     cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
-
+    
                         # 写入检测结果
                         out.write(frame)
-
+    
                         # 显示帧
                         frame_placeholder.image(frame, channels="BGR", use_column_width=True)
-
+    
                     cap.release()
                     out.release()
-
+    
                     # 上传检测结果到 OSS
                     upload_to_oss(oss_client, detection_path, f"detections/detected_{video_file.name}")
-
+    
                     st.success(f"检测结果已保存到OSS")
-
+    
                 # 删除临时文件
                 if os.path.exists(upload_path):
                     os.unlink(upload_path)
                 if os.path.exists(detection_path):
                     os.unlink(detection_path)
-
+    
     with tab3:
         st.header("IP摄像头检测")
         st.warning("此功能需要公开可访问的RTSP流地址")
@@ -397,16 +516,16 @@ def video_detection(oss_client):
             else:
                 frame_placeholder = st.empty()
                 stop_button = st.button("停止检测")
-
+    
                 while cap.isOpened() and not stop_button:
                     ret, frame = cap.read()
                     if not ret:
                         st.warning("视频流中断")
                         break
-
+    
                     # 执行检测
                     results = st.session_state.model(frame)
-
+    
                     # 绘制结果
                     for result in results:
                         if hasattr(result, 'boxes'):
@@ -415,18 +534,15 @@ def video_detection(oss_client):
                                 cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
                                 label = f"{result.names[int(cls)]}: {conf:.2f}"
                                 cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
-
+    
                     # 显示帧
                     frame_placeholder.image(frame, channels="BGR", use_column_width=True)
-
+    
                 cap.release()
-
-# 主应用
-def main():
-    init_session()
-    init_folders()  # 初始化保存路径
-    oss_client = init_oss_client()  # 初始化 OSS 客户端
-
+def main(): 
+    init_session() 
+    init_folders() # 初始化保存路径 
+    oss_client = init_oss_client() # 初始化 OSS 客户端
     if not st.session_state.logged_in:
         st.sidebar.title("导航")
         page = st.sidebar.radio("选择功能", ["登录", "注册"])
@@ -449,6 +565,4 @@ def main():
             st.session_state.username = None
             st.success("您已成功退出登录！")
             st.rerun()
-
-if __name__ == "__main__":
-    main()
+if name == "main": main()    
