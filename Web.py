@@ -1,22 +1,20 @@
-import sys
 import os
-import cv2
-import time
-import numpy as np
-import streamlit as st
-from ultralytics import YOLO
-from PIL import Image
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase, RTCConfiguration
-import av
-import tempfile
-import hashlib
 import random
 import string
+import streamlit as st
+import requests
+from ultralytics import YOLO
 import oss2
 from oss2.exceptions import OssError
 import json
-import requests
-from typing import Dict, Optional
+import hashlib
+import tempfile
+import cv2
+import numpy as np
+from PIL import Image
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, VideoProcessorBase, RTCConfiguration
+import av
+import time
 
 # WebRTC配置
 RTC_CONFIGURATION = RTCConfiguration(
@@ -28,16 +26,6 @@ ACCESS_KEY_ID = 'LTAI5tPdvSTFn4gpa4bpz4Hj'
 ACCESS_KEY_SECRET = 'jef9v75IXKHxNLq3DfsTpi2Ee9Hq6U'
 BUCKET_NAME = 'tjdx-tds-beta1'
 ENDPOINT = 'http://oss-cn-shanghai.aliyuncs.com'
-
-# 上传文件到 OSS
-def upload_to_oss(oss_client, file_path, object_name):
-    try:
-        oss_client.put_object_from_file(object_name, file_path)
-        st.success(f"文件已成功上传到OSS: {object_name}")
-    except OssError as e:
-        st.error(f"上传到OSS时出错: {e}")
-    except Exception as e:
-        st.error(f"上传到OSS时出错: {e}")
 
 # 常量定义
 WINDOW_TITLE = "目标检测系统（TDS_V.0.1）"
@@ -242,6 +230,7 @@ def plot_results(img, results):
                 mask = mask.astype(np.int32).reshape((-1, 1, 2))
                 cv2.fillPoly(img, [mask], (0, 255, 0))
     return img
+
 # 从OSS加载用户信息
 def load_users(oss_client):
     """从OSS加载用户数据"""
@@ -328,6 +317,7 @@ def home_page():
         st.image("cover.jpg", use_column_width=True)
 
     st.markdown(f"**当前模型:** {st.session_state.current_model}")
+
     # 模型切换
     with st.expander("模型管理"):
         col1, col2 = st.columns(2)
@@ -348,17 +338,7 @@ def home_page():
                 st.session_state.model = None
                 st.session_state.current_model = "未加载模型"
                 st.success("模型已卸载")
-            
-            # 重新加载默认模型按钮
-            if st.button("加载默认模型"):
-                model_path = download_default_model()
-                if model_path:
-                    try:
-                        st.session_state.model = load_model(model_path)
-                        st.session_state.current_model = "默认模型(yolov8n)"
-                        st.success("默认模型加载成功")
-                    except Exception as e:
-                        st.error(f"加载默认模型失败: {str(e)}")
+
 # 图片检测页
 def image_detection(oss_client):
     st.title("图片检测")
@@ -472,129 +452,4 @@ def video_detection(oss_client):
                 fps = cap.get(cv2.CAP_PROP_FPS)
 
                 # 使用临时文件保存检测结果
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-                    detection_path = tmp.name
-                    out = cv2.VideoWriter(detection_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (frame_width, frame_height))
-
-                    frame_placeholder = st.empty()
-                    stop_button = st.button("停止检测")
-
-                    while cap.isOpened() and not stop_button:
-                        ret, frame = cap.read()
-                        if not ret:
-                            st.warning("视频结束")
-                            break
-
-                        # 执行检测
-                        results = st.session_state.model(frame)
-
-                        # 绘制结果
-                        for result in results:
-                            if hasattr(result, 'boxes'):
-                                for box, conf, cls in zip(result.boxes.xyxy, result.boxes.conf, result.boxes.cls):
-                                    x1, y1, x2, y2 = map(int, box[:4])
-                                    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
-                                    label = f"{result.names[int(cls)]}: {conf:.2f}"
-                                    cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
-
-                        # 写入检测结果
-                        out.write(frame)
-
-                        # 显示帧
-                        frame_placeholder.image(frame, channels="BGR", use_column_width=True)
-
-                    cap.release()
-                    out.release()
-
-                    # 上传检测结果到 OSS
-                    upload_to_oss(oss_client, detection_path, f"detections/detected_{video_file.name}")
-
-                    st.success(f"检测结果已保存到OSS")
-
-                # 删除临时文件
-                if os.path.exists(upload_path):
-                    os.unlink(upload_path)
-                if os.path.exists(detection_path):
-                    os.unlink(detection_path)
-
-    with tab3:
-        st.header("IP摄像头检测")
-        st.warning("此功能需要公开可访问的RTSP流地址")
-        rtsp_url = st.text_input("输入RTSP流地址（如：rtsp://username:password@ip:port/stream）")
-        
-        if rtsp_url and st.session_state.model and st.button("开始检测"):
-            cap = cv2.VideoCapture(rtsp_url)
-            if not cap.isOpened():
-                st.error("无法连接IP摄像头，请检查RTSP地址")
-            else:
-                frame_placeholder = st.empty()
-                stop_button = st.button("停止检测")
-
-                while cap.isOpened() and not stop_button:
-                    ret, frame = cap.read()
-                    if not ret:
-                        st.warning("视频流中断")
-                        break
-
-                    # 执行检测
-                    results = st.session_state.model(frame)
-
-                    # 绘制结果
-                    for result in results:
-                        if hasattr(result, 'boxes'):
-                            for box, conf, cls in zip(result.boxes.xyxy, result.boxes.conf, result.boxes.cls):
-                                x1, y1, x2, y2 = map(int, box[:4])
-                                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
-                                label = f"{result.names[int(cls)]}: {conf:.2f}"
-                                cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
-
-                    # 显示帧
-                    frame_placeholder.image(frame, channels="BGR", use_column_width=True)
-
-                cap.release()
-
-# 主应用逻辑
-def main():
-    oss_client = init_components()
-    
-    if not st.session_state.logged_in:
-        show_auth_pages(oss_client)
-    else:
-        show_main_pages(oss_client)
-
-# 认证页面
-def show_auth_pages(oss_client):
-    st.sidebar.title("导航")
-    page = st.sidebar.radio("选择功能", ["登录", "注册"])
-    
-    if page == "登录":
-        login_page(oss_client)
-    elif page == "注册":
-        register_page(oss_client)
-
-# 主功能页面
-def show_main_pages(oss_client):
-    st.sidebar.title("导航")
-    st.sidebar.markdown(f"**用户:** {st.session_state.username}")
-    
-    pages = {
-        "主页": home_page,
-        "模型管理": model_manager,
-        "图片检测": lambda: image_detection(oss_client),
-        "视频检测": lambda: video_detection(oss_client),
-        "退出登录": logout
-    }
-    
-    choice = st.sidebar.radio("选择功能", list(pages.keys()))
-    pages[choice]()
-
-# 退出登录
-def logout():
-    st.session_state.logged_in = False
-    st.session_state.username = None
-    st.success("您已成功退出登录！")
-    time.sleep(1)
-    st.rerun()
-
-if __name__ == "__main__":
-    main()
+                with tempfile.NamedTemporaryFile
