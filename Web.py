@@ -1,5 +1,5 @@
 import sys
-sys.path.append(r"E:\anaconda3\envs\YOLOT\Lib\site-packages")
+# sys.path.append(r"E:\anaconda3\envs\YOLOT\Lib\site-packages")
 import os
 import cv2
 import time
