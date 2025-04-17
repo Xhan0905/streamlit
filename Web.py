@@ -40,7 +40,7 @@ def upload_to_oss(oss_client, file_path, object_name):
         st.error(f"上传到OSS时出错: {e}")
 
 # 常量定义
-WINDOW_TITLE = "目标检测系统（TDS_V.0.1）"
+WINDOW_TITLE = "目标检测系统（TDS_beta1）"
 WELCOME_SENTENCE = "欢迎使用基于YOLO的目标检测与分割系统！\n同济大学徐晨团队"
 OSS_USERS_FILE = "users_info.json"  # 用户信息文件存储在OSS中
 
@@ -332,7 +332,9 @@ def home_page():
     st.image(cover_image_url, use_column_width=True)
 
     st.markdown(f"**当前模型:** {st.session_state.current_model}")
-    
+    st.sidebar.markdown("### 联系我们！")
+    st.sidebar.image("https://github.com/Xhan0905/streamlit/raw/refs/heads/main/2c95c15e870cffa43ff2fc977876bc0.png", width=150)
+    st.sidebar.markdown("邮箱: Xhan_0905@tongji.edu.cn")
 # 图片检测页
 def image_detection(oss_client):
     st.title("图片检测")
