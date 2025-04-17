@@ -1,5 +1,4 @@
 import sys
-# sys.path.append(r"E:\anaconda3\envs\YOLOT\Lib\site-packages")
 import os
 import cv2
 import time
@@ -15,7 +14,7 @@ import random
 import string
 import oss2
 from oss2.exceptions import OssError
-import chardet
+import json
 
 def handler(event, context):
     os.system("streamlit run Web.py --server.port 8080")
@@ -50,8 +49,8 @@ def upload_to_oss(oss_client, file_path, object_name):
         st.error(f"上传到OSS时出错: {e}")
 
 # 定义保存路径
-UPLOAD_FOLDER = "tjdx/uploads"
-DETECTION_FOLDER = "tjdx/detections"
+UPLOAD_FOLDER = "uploads"
+DETECTION_FOLDER = "detections"
 
 # 初始化保存路径
 def init_folders():
@@ -60,11 +59,10 @@ def init_folders():
     if not os.path.exists(DETECTION_FOLDER):
         os.makedirs(DETECTION_FOLDER)
 
-
 # 常量定义
 WINDOW_TITLE = "目标检测系统（TDS_V.0.1）"
 WELCOME_SENTENCE = "欢迎使用基于YOLO的目标检测与分割系统！\n同济大学徐晨团队"
-USERS_FILE = "users.txt"  # 用户信息文件
+OSS_USERS_FILE = "users_info.json"  # 用户信息文件存储在OSS中
 
 # 初始化session state
 def init_session():
@@ -84,6 +82,8 @@ def init_session():
         st.session_state.redirect = False
     if 'captcha' not in st.session_state:
         st.session_state.captcha = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    if 'username' not in st.session_state:
+        st.session_state.username = None
 
 # 模型加载装饰器
 @st.cache_resource
@@ -126,42 +126,34 @@ class VideoProcessor(VideoProcessorBase):
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-# 读取用户信息
-def get_file_encoding(file_path):
-    with open(file_path, 'rb') as f:
-        result = chardet.detect(f.read())
-    return result['encoding']
-    
-def load_users():
+# 从OSS加载用户信息
+def load_users(oss_client):
+    """从OSS加载用户数据"""
     users = {}
-    if os.path.exists(USERS_FILE):
-        encoding = get_file_encoding(USERS_FILE)
-        with open(USERS_FILE, "r", encoding=encoding) as f:
-            for line in f:
-                parts = line.strip().split(",")
-                if len(parts) == 6:
-                    username, hashed_password, phone, name, unit, email = parts
-                    users[username] = {
-                        "password": hashed_password,
-                        "phone": phone,
-                        "name": name,
-                        "unit": unit,
-                        "email": email
-                    }
-                else:
-                    # 如果格式不符合预期，跳过该行并记录错误
-                    st.error(f"用户信息格式错误: {line.strip()}")
+    try:
+        # 检查文件是否存在
+        if oss_client.object_exists(OSS_USERS_FILE):
+            # 下载文件内容
+            data = oss_client.get_object(OSS_USERS_FILE).read()
+            users = json.loads(data.decode('utf-8'))
+    except (OssError, json.JSONDecodeError) as e:
+        st.error(f"加载用户数据失败: {e}")
     return users
 
-# 保存用户信息
-def save_users(users):
-    with open(USERS_FILE, "w") as f:
-        for username, user_info in users.items():
-            f.write(f"{username},{user_info['password']},{user_info['phone']},{user_info['name']},{user_info['unit']},{user_info['email']}\n")
+# 保存用户信息到OSS
+def save_users(oss_client, users):
+    """保存用户数据到OSS"""
+    try:
+        # 将用户数据转为JSON字符串
+        data = json.dumps(users, ensure_ascii=False).encode('utf-8')
+        # 上传到OSS（覆盖写入）
+        oss_client.put_object(OSS_USERS_FILE, data)
+    except OssError as e:
+        st.error(f"保存用户数据到OSS失败: {e}")
 
 # 登录页面
-def login_page():
-    users = load_users()
+def login_page(oss_client):
+    users = load_users(oss_client)
     st.title("登录")
     username = st.text_input("用户名")
     password = st.text_input("密码", type="password")
@@ -172,6 +164,7 @@ def login_page():
         hashed_password = hashlib.sha256(password.encode()).hexdigest()
         if username in users and users[username]["password"] == hashed_password and captcha == st.session_state.captcha:
             st.session_state.logged_in = True
+            st.session_state.username = username
             st.success("登录成功！")
             st.rerun()
         else:
@@ -179,8 +172,8 @@ def login_page():
             st.session_state.captcha = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
 # 注册页面
-def register_page():
-    users = load_users()
+def register_page(oss_client):
+    users = load_users(oss_client)
     st.title("注册")
     new_username = st.text_input("新用户名")
     new_password = st.text_input("新密码", type="password")
@@ -205,7 +198,7 @@ def register_page():
                 "unit": new_unit,
                 "email": new_email
             }
-            save_users(users)
+            save_users(oss_client, users)
             st.success("注册成功！请登录。")
             st.session_state.captcha = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
@@ -241,14 +234,6 @@ def home_page():
                 st.session_state.current_model = "未加载模型"
                 st.success("模型已卸载")
 
-    # 历史记录
-    if st.button("查看历史记录"):
-        if os.path.exists("records.txt"):
-            with open("records.txt", "r") as f:
-                st.text_area("历史记录", f.read(), height=200)
-        else:
-            st.warning("没有找到历史记录文件")
-
 # 图片检测页
 def image_detection(oss_client):
     st.title("图片检测")
@@ -258,11 +243,10 @@ def image_detection(oss_client):
     with col1:
         uploaded_file = st.file_uploader("上传图片", type=["jpg", "jpeg", "png"])
         if uploaded_file:
-            # 保存上传的图片
-            upload_path = os.path.join(UPLOAD_FOLDER, uploaded_file.name)
-            with open(upload_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            st.success(f"图片已保存到: {upload_path}")
+            # 使用临时文件
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp:
+                tmp.write(uploaded_file.getbuffer())
+                upload_path = tmp.name
 
             # 上传到 OSS
             upload_to_oss(oss_client, upload_path, f"uploads/{uploaded_file.name}")
@@ -291,28 +275,30 @@ def image_detection(oss_client):
                                 label = f"{result.names[int(cls)]}: {conf:.2f}"
                                 cv2.putText(orig_img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
 
-                    # 保存检测结果
-                    detection_path = os.path.join(DETECTION_FOLDER, f"detected_{uploaded_file.name}")
-                    cv2.imwrite(detection_path, orig_img)
-                    st.success(f"检测结果已保存到: {detection_path}")
+                    # 保存检测结果到临时文件
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+                        detection_path = tmp.name
+                        cv2.imwrite(detection_path, orig_img)
+                        
+                        # 上传检测结果到 OSS
+                        upload_to_oss(oss_client, detection_path, f"detections/detected_{uploaded_file.name}")
 
-                    # 上传检测结果到 OSS
-                    upload_to_oss(oss_client, detection_path, f"detections/detected_{uploaded_file.name}")
-
-                    # 显示检测结果
-                    detected_image = Image.open(detection_path)
-                    st.image(detected_image, caption="检测结果", use_column_width=True)
+                        # 显示检测结果
+                        detected_image = Image.open(detection_path)
+                        st.image(detected_image, caption="检测结果", use_column_width=True)
 
                     # 记录结果
                     detection_time = time.time() - start_time
                     st.success(f"检测完成! 耗时: {detection_time:.2f}秒 | 检测到 {len(results)} 个目标")
 
-                    # 保存记录
-                    with open("records.txt", "a") as f:
-                        f.write(f"{time.ctime()} | 图片检测 | 用户: {st.session_state.username} | 用时: {detection_time:.2f}s | 目标数: {len(results)}\n")
-
                 except Exception as e:
                     st.error(f"检测出错: {e}")
+                finally:
+                    # 删除临时文件
+                    if os.path.exists(upload_path):
+                        os.unlink(upload_path)
+                    if 'detection_path' in locals() and os.path.exists(detection_path):
+                        os.unlink(detection_path)
 
 # 视频检测页
 def video_detection(oss_client):
@@ -320,16 +306,28 @@ def video_detection(oss_client):
 
     tab1, tab2, tab3 = st.tabs(["摄像头检测", "视频文件检测", "IP摄像头检测"])
 
+    with tab1:
+        st.header("摄像头实时检测")
+        if st.session_state.model:
+            webrtc_ctx = webrtc_streamer(
+                key="example",
+                mode=WebRtcMode.SENDRECV,
+                video_processor_factory=VideoProcessor,
+                async_processing=True,
+            )
+            if webrtc_ctx.video_processor:
+                if st.button("暂停/继续检测"):
+                    webrtc_ctx.video_processor.pause_toggle()
+
     with tab2:
         st.header("视频文件检测")
         video_file = st.file_uploader("上传视频文件", type=["mp4", "avi", "mov"])
 
         if video_file and st.session_state.model:
-            # 保存上传的视频
-            upload_path = os.path.join(UPLOAD_FOLDER, video_file.name)
-            with open(upload_path, "wb") as f:
-                f.write(video_file.getbuffer())
-            st.success(f"视频已保存到: {upload_path}")
+            # 使用临时文件
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(video_file.name)[1]) as tmp:
+                tmp.write(video_file.read())
+                upload_path = tmp.name
 
             # 上传到 OSS
             upload_to_oss(oss_client, upload_path, f"uploads/{video_file.name}")
@@ -341,17 +339,69 @@ def video_detection(oss_client):
                 frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 fps = cap.get(cv2.CAP_PROP_FPS)
 
-                # 保存检测结果
-                detection_path = os.path.join(DETECTION_FOLDER, f"detected_{video_file.name}")
-                out = cv2.VideoWriter(detection_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (frame_width, frame_height))
+                # 使用临时文件保存检测结果
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+                    detection_path = tmp.name
+                    out = cv2.VideoWriter(detection_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (frame_width, frame_height))
 
+                    frame_placeholder = st.empty()
+                    stop_button = st.button("停止检测")
+
+                    while cap.isOpened() and not stop_button:
+                        ret, frame = cap.read()
+                        if not ret:
+                            st.warning("视频结束")
+                            break
+
+                        # 执行检测
+                        results = st.session_state.model(frame)
+
+                        # 绘制结果
+                        for result in results:
+                            if hasattr(result, 'boxes'):
+                                for box, conf, cls in zip(result.boxes.xyxy, result.boxes.conf, result.boxes.cls):
+                                    x1, y1, x2, y2 = map(int, box[:4])
+                                    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                                    label = f"{result.names[int(cls)]}: {conf:.2f}"
+                                    cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+
+                        # 写入检测结果
+                        out.write(frame)
+
+                        # 显示帧
+                        frame_placeholder.image(frame, channels="BGR", use_column_width=True)
+
+                    cap.release()
+                    out.release()
+
+                    # 上传检测结果到 OSS
+                    upload_to_oss(oss_client, detection_path, f"detections/detected_{video_file.name}")
+
+                    st.success(f"检测结果已保存到OSS")
+
+                # 删除临时文件
+                if os.path.exists(upload_path):
+                    os.unlink(upload_path)
+                if os.path.exists(detection_path):
+                    os.unlink(detection_path)
+
+    with tab3:
+        st.header("IP摄像头检测")
+        st.warning("此功能需要公开可访问的RTSP流地址")
+        rtsp_url = st.text_input("输入RTSP流地址（如：rtsp://username:password@ip:port/stream）")
+        
+        if rtsp_url and st.session_state.model and st.button("开始检测"):
+            cap = cv2.VideoCapture(rtsp_url)
+            if not cap.isOpened():
+                st.error("无法连接IP摄像头，请检查RTSP地址")
+            else:
                 frame_placeholder = st.empty()
                 stop_button = st.button("停止检测")
 
                 while cap.isOpened() and not stop_button:
                     ret, frame = cap.read()
                     if not ret:
-                        st.warning("视频结束")
+                        st.warning("视频流中断")
                         break
 
                     # 执行检测
@@ -366,19 +416,10 @@ def video_detection(oss_client):
                                 label = f"{result.names[int(cls)]}: {conf:.2f}"
                                 cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
 
-                    # 写入检测结果
-                    out.write(frame)
-
                     # 显示帧
                     frame_placeholder.image(frame, channels="BGR", use_column_width=True)
 
                 cap.release()
-                out.release()
-
-                # 上传检测结果到 OSS
-                upload_to_oss(oss_client, detection_path, f"detections/detected_{video_file.name}")
-
-                st.success(f"检测结果已保存到: {detection_path}")
 
 # 主应用
 def main():
@@ -390,11 +431,12 @@ def main():
         st.sidebar.title("导航")
         page = st.sidebar.radio("选择功能", ["登录", "注册"])
         if page == "登录":
-            login_page()
+            login_page(oss_client)
         elif page == "注册":
-            register_page()
+            register_page(oss_client)
     else:
         st.sidebar.title("导航")
+        st.sidebar.write(f"当前用户: {st.session_state.username}")
         page = st.sidebar.radio("选择功能", ["主页", "图片检测", "视频检测", "退出登录"])
         if page == "主页":
             home_page()
@@ -404,8 +446,9 @@ def main():
             video_detection(oss_client)
         elif page == "退出登录":
             st.session_state.logged_in = False
+            st.session_state.username = None
             st.success("您已成功退出登录！")
-            login_page()
+            st.rerun()
 
 if __name__ == "__main__":
     main()
