@@ -35,12 +35,12 @@ MODEL_REPO = {
     "concraseg": "best-seg.pt",
 }
 
-# 初始化全局组件
-def init_components():
-    """初始化所有全局组件和配置"""
-    init_session_state()
-    init_folders()
-    return init_oss_client()
+# 初始化文件夹
+def init_folders():
+    """初始化所需的文件夹"""
+    os.makedirs("models", exist_ok=True)  # 用于存储下载的模型
+    os.makedirs("uploads", exist_ok=True)  # 用于存储用户上传的文件
+    os.makedirs("detections", exist_ok=True)  # 用于存储检测结果
 
 # 初始化session state
 def init_session_state():
@@ -56,7 +56,7 @@ def init_session_state():
         'captcha': ''.join(random.choices(string.ascii_uppercase + string.digits, k=6)),
         'username': None,
         'webrtc_ctx': None,
-        'available_models': list(MODEL_REPO.keys()),  # 确保这里使用 MODEL_REPO 的键
+        'available_models': list(MODEL_REPO.keys()),
         'selected_model': next(iter(MODEL_REPO.keys()))  # 默认选择第一个模型
     }
     
@@ -67,6 +67,27 @@ def init_session_state():
     # 自动加载默认模型
     if st.session_state.model is None and not st.session_state.logged_in:
         load_builtin_model(next(iter(MODEL_REPO.keys())))
+
+# 初始化 OSS 客户端
+def init_oss_client():
+    """初始化 OSS 客户端"""
+    try:
+        auth = oss2.Auth(ACCESS_KEY_ID, ACCESS_KEY_SECRET)
+        oss_client = oss2.Bucket(auth, ENDPOINT, BUCKET_NAME)
+        return oss_client
+    except OssError as e:
+        st.error(f"初始化OSS客户端时出错: {e}")
+        return None
+    except Exception as e:
+        st.error(f"初始化OSS客户端时出错: {e}")
+        return None
+
+# 初始化全局组件
+def init_components():
+    """初始化所有全局组件和配置"""
+    init_session_state()
+    init_folders()
+    return init_oss_client()
 
 # 下载模型文件
 def download_model(model_name: str) -> Optional[str]:
