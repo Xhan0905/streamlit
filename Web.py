@@ -174,11 +174,16 @@ def model_manager():
     col1, col2 = st.columns([3, 2])
     
     with col1:
-        # 模型选择下拉菜单
+        # 修改这里：添加自定义模型选项到下拉菜单
+        available_options = st.session_state.available_models + ["自定义模型"]
+        
+        # 确保当前选择存在于选项中
+        current_selection = st.session_state.selected_model if st.session_state.selected_model in available_options else available_options[0]
+        
         selected = st.selectbox(
             "选择内置模型",
-            options=st.session_state.available_models,
-            index=st.session_state.available_models.index(st.session_state.selected_model),
+            options=available_options,
+            index=available_options.index(current_selection),
             key="model_selector"
         )
         
