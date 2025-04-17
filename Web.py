@@ -227,6 +227,20 @@ def plot_results(img, results):
                 mask = mask.astype(np.int32).reshape((-1, 1, 2))
                 cv2.fillPoly(img, [mask], (0, 255, 0))
     return img
+# 从OSS加载用户信息
+def load_users(oss_client):
+    """从OSS加载用户数据"""
+    users = {}
+    try:
+        # 检查文件是否存在
+        if oss_client.object_exists(OSS_USERS_FILE):
+            # 下载文件内容
+            data = oss_client.get_object(OSS_USERS_FILE).read()
+            users = json.loads(data.decode('utf-8'))
+    except (OssError, json.JSONDecodeError) as e:
+        st.error(f"加载用户数据失败: {e}")
+    return users
+    
 # 保存用户信息到OSS
 def save_users(oss_client, users):
     """保存用户数据到OSS"""
