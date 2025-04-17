@@ -31,7 +31,7 @@ ENDPOINT = 'http://oss-cn-shanghai.aliyuncs.com'
 
 # 内置模型配置
 MODEL_REPO = {
-    "yolov11n (默认)": "yolov11n.pt",
+    "yolo11n (默认)": "yolo11n.pt",
     "concraseg": "best-seg.pt",
 }
 
