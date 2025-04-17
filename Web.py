@@ -457,16 +457,16 @@ def video_detection(oss_client):
                             break
 
                         # 执行检测
-                        results = st.session_state.model(frame)
-
-                        # 绘制结果
-                        for result in results:
-                            if hasattr(result, 'boxes'):
-                                for box, conf, cls in zip(result.boxes.xyxy, result.boxes.conf, result.boxes.cls):
-                                    x1, y1, x2, y2 = map(int, box[:4])
-                                    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
-                                    label = f"{result.names[int(cls)]}: {conf:.2f}"
-                                    cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+                        if st.session_state.model:
+                            results = st.session_state.model(frame)
+                            # 绘制结果
+                            for result in results:
+                                if hasattr(result, 'boxes'):
+                                    for box, conf, cls in zip(result.boxes.xyxy, result.boxes.conf, result.boxes.cls):
+                                        x1, y1, x2, y2 = map(int, box[:4])
+                                        cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                                        label = f"{result.names[int(cls)]}: {conf:.2f}"
+                                        cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
 
                         # 写入检测结果
                         out.write(frame)
@@ -508,16 +508,16 @@ def video_detection(oss_client):
                         break
 
                     # 执行检测
-                    results = st.session_state.model(frame)
-
-                    # 绘制结果
-                    for result in results:
-                        if hasattr(result, 'boxes'):
-                            for box, conf, cls in zip(result.boxes.xyxy, result.boxes.conf, result.boxes.cls):
-                                x1, y1, x2, y2 = map(int, box[:4])
-                                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
-                                label = f"{result.names[int(cls)]}: {conf:.2f}"
-                                cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+                    if st.session_state.model:
+                        results = st.session_state.model(frame)
+                        # 绘制结果
+                        for result in results:
+                            if hasattr(result, 'boxes'):
+                                for box, conf, cls in zip(result.boxes.xyxy, result.boxes.conf, result.boxes.cls):
+                                    x1, y1, x2, y2 = map(int, box[:4])
+                                    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                                    label = f"{result.names[int(cls)]}: {conf:.2f}"
+                                    cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
 
                     # 显示帧
                     frame_placeholder.image(frame, channels="BGR", use_column_width=True)
