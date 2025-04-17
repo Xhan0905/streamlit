@@ -29,6 +29,11 @@ ACCESS_KEY_SECRET = 'jef9v75IXKHxNLq3DfsTpi2Ee9Hq6U'
 BUCKET_NAME = 'tjdx-tds-beta1'
 ENDPOINT = 'http://oss-cn-shanghai.aliyuncs.com'
 
+# 常量定义
+WINDOW_TITLE = "目标检测系统（TDS_V.0.1）"
+WELCOME_SENTENCE = "欢迎使用基于YOLO的目标检测与分割系统！\n同济大学徐晨团队"
+OSS_USERS_FILE = "users_info.json"  # 用户信息文件存储在OSS中
+
 # 内置模型配置
 MODEL_REPO = {
     "yolo11n (默认)": "yolo11n.pt",
