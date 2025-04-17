@@ -1,0 +1,12 @@
+streamlit==1.36.0
+streamlit-webrtc==0.48.0
+ultralytics==8.3.11
+torch==2.4.1
+torchvision==0.19.1
+opencv-python-headless==4.10.0.84
+numpy==2.1.2
+pillow==10.4.0
+pandas==2.2.3
+matplotlib==3.9.2
+oss2==2.18.4
+pyyaml==6.0.2
