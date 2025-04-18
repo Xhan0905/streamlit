@@ -41,7 +41,7 @@ def upload_to_oss(oss_client, file_path, object_name):
 
 # 常量定义
 WINDOW_TITLE = "目标检测系统（TDS_beta1）"
-WELCOME_SENTENCE = "欢迎使用基于YOLO的目标检测与分割系统！\n同济大学徐晨团队"
+WELCOME_SENTENCE = "欢迎使用基于YOLO的目标检测与分割系统！"
 OSS_USERS_FILE = "users_info.json"  # 用户信息文件存储在OSS中
 
 # 内置模型配置
